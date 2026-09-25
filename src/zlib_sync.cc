@@ -32,7 +32,8 @@ const char* zlib_get_error(int error_code) {
 
 class ZlibSyncInflate : public ObjectWrap {
     private:
-        z_stream stream;
+        z_stream stream{};
+        bool initialized = false;
         int err;
 
         unsigned int chunk_size;
@@ -57,9 +58,13 @@ class ZlibSyncInflate : public ObjectWrap {
             stream.avail_in = 0;
             stream.next_in = Z_NULL;
             stream.total_out = total_out = 0;
-            int err = inflateInit2(&stream, window_bits);
-            if(err != 0) {
-                Nan::ThrowError(zlib_get_error(err));
+            err = inflateInit2(&stream, window_bits);
+            initialized = err == Z_OK;
+        }
+
+        ~ZlibSyncInflate() override {
+            if(initialized) {
+                inflateEnd(&stream);
             }
         }
 
@@ -179,6 +184,11 @@ class ZlibSyncInflate : public ObjectWrap {
 
             ZlibSyncInflate* zlib_sync = new ZlibSyncInflate(chunkSize, toString, windowBits);
 
+            if(zlib_sync->err != Z_OK) {
+                const char* message = zlib_get_error(zlib_sync->err);
+                delete zlib_sync;
+                return Nan::ThrowError(message);
+            }
             zlib_sync->Wrap(info.This());
             info.GetReturnValue().Set(info.This());
         }
